@@ -33,3 +33,9 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Stable signing key MUST remain encrypted
+signing/*.p12
+signing/*.keystore
+signing/*.enc
+signing/*.jks
