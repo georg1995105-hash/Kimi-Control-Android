@@ -152,8 +152,8 @@ class KimiApi(private val endpoint: String, private val token: String) {
         connection.setRequestProperty("Authorization", "Bearer $token")
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
         var transferred = 0L
-        val prefix = ("--$boundary\\r\\nContent-Disposition: form-data; name=\\\"file\\\"; filename=\\\"attachment\\\"\\r\\nContent-Type: $mime\\r\\n\\r\\n").toByteArray()
-        val suffix = "\\r\\n--$boundary--\\r\\n".toByteArray()
+        val prefix = ("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"attachment\"\r\nContent-Type: $mime\r\n\r\n").toByteArray()
+        val suffix = "\r\n--$boundary--\r\n".toByteArray()
         val bytes = ByteArrayOutputStream()
         resolver.openInputStream(uri)?.use { input ->
             val buffer = ByteArray(64 * 1024)
