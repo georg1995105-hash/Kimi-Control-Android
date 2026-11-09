@@ -43,15 +43,17 @@ def allowed(method: str, path: str) -> bool:
     raw = parsed.path
     if parsed.fragment or "//" in raw or "\\\\" in raw:
         return False
-    if method == "GET" and raw.endswith("/approvals") and parsed.query != "status=pending":
+    if method == "GET" and (raw.endswith("/approvals") or raw.endswith("/questions")) and parsed.query != "status=pending":
         return False
     if (method, raw) in ALLOWED:
         return True
-    if method == "GET" and re.fullmatch(SESSION_PREFIX + r"/(messages|snapshot|prompts|approvals)", raw):
+    if method == "GET" and re.fullmatch(SESSION_PREFIX + r"/(messages|snapshot|prompts|approvals|questions)", raw):
         return True
     if method == "POST" and re.fullmatch(SESSION_PREFIX + r"/prompts", raw):
         return True
     if method == "POST" and re.fullmatch(SESSION_PREFIX + rf"/prompts/{APPROVAL}:abort", raw):
+        return True
+    if method == "POST" and re.fullmatch(SESSION_PREFIX + rf"/questions/{APPROVAL}", raw):
         return True
     if method == "POST" and re.fullmatch(SESSION_PREFIX + rf"/approvals/{APPROVAL}", raw):
         return True
