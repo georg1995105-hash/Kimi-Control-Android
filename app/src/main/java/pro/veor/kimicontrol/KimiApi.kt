@@ -149,24 +149,28 @@ class KimiApi(private val endpoint: String, private val token: String) {
         connection.readTimeout = 120_000
         connection.instanceFollowRedirects = false
         connection.doOutput = true
-        connection.setChunkedStreamingMode(64 * 1024)
         connection.setRequestProperty("Authorization", "Bearer $token")
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
         var transferred = 0L
+        val prefix = ("--$boundary\\r\\nContent-Disposition: form-data; name=\\\"file\\\"; filename=\\\"attachment\\\"\\r\\nContent-Type: $mime\\r\\n\\r\\n").toByteArray()
+        val suffix = "\\r\\n--$boundary--\\r\\n".toByteArray()
+        val bytes = ByteArrayOutputStream()
+        resolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                transferred += read
+                if (transferred > 30L * 1024 * 1024) throw KimiApiException("Лимит вложения 30 МБ")
+                bytes.write(buffer, 0, read)
+            }
+        } ?: throw KimiApiException("Не удалось прочитать вложение")
+        connection.setFixedLengthStreamingMode(prefix.size + bytes.size() + suffix.size)
         try {
             connection.outputStream.use { output ->
-                output.write(("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"attachment\"\r\nContent-Type: $mime\r\n\r\n").toByteArray())
-                resolver.openInputStream(uri)?.use { input ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        transferred += read
-                        if (transferred > 30L * 1024 * 1024) throw KimiApiException("Лимит вложения 30 МБ")
-                        output.write(buffer, 0, read)
-                    }
-                } ?: throw KimiApiException("Не удалось прочитать вложение")
-                output.write("\r\n--$boundary--\r\n".toByteArray())
+                output.write(prefix)
+                bytes.writeTo(output)
+                output.write(suffix)
             }
             val status = connection.responseCode
             if (status !in 200..299) throw KimiApiException("Ошибка загрузки HTTP $status")
