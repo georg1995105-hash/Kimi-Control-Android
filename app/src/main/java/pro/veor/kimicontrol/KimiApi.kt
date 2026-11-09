@@ -152,10 +152,10 @@ class KimiApi(private val endpoint: String, private val token: String) {
         connection.setChunkedStreamingMode(64 * 1024)
         connection.setRequestProperty("Authorization", "Bearer $token")
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        var transferred = 0L
         try {
             connection.outputStream.use { output ->
                 output.write(("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"attachment\"\r\nContent-Type: $mime\r\n\r\n").toByteArray())
-                var transferred = 0L
                 resolver.openInputStream(uri)?.use { input ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
