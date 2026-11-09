@@ -41,11 +41,17 @@ ALLOWED = {
 def allowed(method: str, path: str) -> bool:
     parsed = urllib.parse.urlsplit(path)
     raw = parsed.path
+    if parsed.fragment or "//" in raw or "\\\\" in raw:
+        return False
+    if method == "GET" and raw.endswith("/approvals") and parsed.query != "status=pending":
+        return False
     if (method, raw) in ALLOWED:
         return True
-    if method == "GET" and re.fullmatch(SESSION_PREFIX + r"/(messages|snapshot)", raw):
+    if method == "GET" and re.fullmatch(SESSION_PREFIX + r"/(messages|snapshot|prompts|approvals)", raw):
         return True
     if method == "POST" and re.fullmatch(SESSION_PREFIX + r"/prompts", raw):
+        return True
+    if method == "POST" and re.fullmatch(SESSION_PREFIX + rf"/prompts/{APPROVAL}:abort", raw):
         return True
     if method == "POST" and re.fullmatch(SESSION_PREFIX + rf"/approvals/{APPROVAL}", raw):
         return True
@@ -61,6 +67,14 @@ def allowed(method: str, path: str) -> bool:
             segment not in ("", ".", "..") and "\x00" not in segment for segment in segments
         )
     return False
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+LOCAL_OPENER = urllib.request.build_opener(NoRedirect)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -103,7 +117,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
         request = urllib.request.Request(UPSTREAM + self.path, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
+            with LOCAL_OPENER.open(request, timeout=120) as response:
                 content = response.read(MAX_RESPONSE + 1)
                 if len(content) > MAX_RESPONSE:
                     self.send_error(413, "Response too large")
@@ -116,6 +130,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
         except urllib.error.HTTPError as exc:
+            if 300 <= exc.code < 400:
+                self.send_error(502, "Unexpected redirect from Kimi backend")
+                return
             self.send_response(exc.code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
