@@ -260,6 +260,29 @@ fun ConnectedScreen() {
                                         }, color = Mint, style = MaterialTheme.typography.labelSmall)
                                         Spacer(Modifier.height(5.dp))
                                         Text(item.text, style = MaterialTheme.typography.bodyMedium)
+                                        if (item.role == "assistant") {
+                                            val candidates = remember(item.id, item.text) {
+                                                Regex(`([a-zA-Z0-9_./-]+\\.(?:md|txt|pdf|zip|apk|json|csv|png|jpg|log))`)
+                                                    .findAll(item.text)
+                                                    .map { it.groupValues[1] }
+                                                    .filter { !it.startsWith("/") && it.split('/').none { part -> part == ".." } }
+                                                    .distinct()
+                                                    .take(3)
+                                                    .toList()
+                                            }
+                                            candidates.forEach { path ->
+                                                TextButton(
+                                                    onClick = {
+                                                        downloadPath = path
+                                                        tab = 1
+                                                    }
+                                                ) {
+                                                    Icon(Icons.Default.Download, null, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.width(5.dp))
+                                                    Text("Скачать: " + path.substringAfterLast('/'), maxLines = 1)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
