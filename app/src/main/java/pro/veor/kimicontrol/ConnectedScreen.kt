@@ -57,6 +57,7 @@ fun ConnectedScreen() {
     var history by remember { mutableStateOf(emptyList<KimiMessage>()) }
     var approvals by remember { mutableStateOf(emptyList<KimiApproval>()) }
     var runningPrompt by remember { mutableStateOf<KimiRunningPrompt?>(null) }
+    var questions by remember { mutableStateOf(emptyList<KimiQuestion>()) }
     val files = remember { mutableStateListOf<Uri>() }
     var downloadPath by remember { mutableStateOf("") }
     var downloaded by remember { mutableStateOf<java.io.File?>(null) }
@@ -78,7 +79,8 @@ fun ConnectedScreen() {
             val currentMessages = if (session.isNotBlank()) client.messages(session) else emptyList()
             val currentApprovals = if (session.isNotBlank()) client.pendingApprovals(session) else emptyList()
             val active = if (session.isNotBlank()) client.runningPrompt(session) else null
-            listOf(currentSessions, currentMessages, currentApprovals, active)
+            val currentQuestions = if (session.isNotBlank()) client.pendingQuestions(session) else emptyList()
+            listOf(currentSessions, currentMessages, currentApprovals, active, currentQuestions)
         }
         @Suppress("UNCHECKED_CAST")
         sessions = result[0] as List<KimiSession>
@@ -87,6 +89,8 @@ fun ConnectedScreen() {
         @Suppress("UNCHECKED_CAST")
         approvals = result[2] as List<KimiApproval>
         runningPrompt = result[3] as? KimiRunningPrompt
+        @Suppress("UNCHECKED_CAST")
+        questions = result[4] as List<KimiQuestion>
     }
     fun connect() = runAction {
         withContext(Dispatchers.IO) { api().check() }
@@ -332,6 +336,38 @@ fun ConnectedScreen() {
                                     }
                                 }
                             }
+                            items(questions, key = { it.batchId + ":" + it.itemId }) { question ->
+                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF283946))) {
+                                    Column(
+                                        Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text("Kimi задаёт вопрос", color = Mint, fontWeight = FontWeight.Bold)
+                                        Text(question.prompt, color = Color.White)
+                                        if (question.multi || question.batchSize != 1) {
+                                            Text(
+                                                "Для нескольких вопросов или множественного выбора используйте веб-интерфейс Kimi.",
+                                                color = Amber, style = MaterialTheme.typography.bodySmall
+                                            )
+                                        } else {
+                                            question.options.forEach { option ->
+                                                OutlinedButton(
+                                                    enabled = !working,
+                                                    onClick = {
+                                                        runAction {
+                                                            withContext(Dispatchers.IO) {
+                                                                api().answerSingleQuestion(session, question, option.id)
+                                                            }
+                                                            refresh()
+                                                        }
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) { Text(option.label) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             items(approvals, key = { it.id }) { approval ->
                                 Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF493927))) {
                                     Column(Modifier.padding(14.dp)) {
@@ -522,6 +558,7 @@ fun ConnectedScreen() {
                                 history = emptyList()
                                 approvals = emptyList()
                                 runningPrompt = null
+                                questions = emptyList()
                                 accessToken = ""
                                 error = ""
                             }) { Text("Удалить настройки подключения", color = Amber) }
