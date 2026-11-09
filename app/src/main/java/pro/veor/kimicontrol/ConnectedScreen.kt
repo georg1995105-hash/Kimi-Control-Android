@@ -262,7 +262,7 @@ fun ConnectedScreen() {
                                         Text(item.text, style = MaterialTheme.typography.bodyMedium)
                                         if (item.role == "assistant") {
                                             val candidates = remember(item.id, item.text) {
-                                                Regex(`([a-zA-Z0-9_./-]+\\.(?:md|txt|pdf|zip|apk|json|csv|png|jpg|log))`)
+                                                Regex("""([a-zA-Z0-9_./-]+\.(?:md|txt|pdf|zip|apk|json|csv|png|jpg|log))""")
                                                     .findAll(item.text)
                                                     .map { it.groupValues[1] }
                                                     .filter { !it.startsWith("/") && it.split('/').none { part -> part == ".." } }
