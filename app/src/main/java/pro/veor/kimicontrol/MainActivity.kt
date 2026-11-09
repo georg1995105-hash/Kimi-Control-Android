@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme(
                 primary = Accent, onPrimary = Background, background = Background,
                 surface = Panel, onSurface = Color.White
-            )) { KimiScreen() }
+            )) { ConnectedScreen() }
         }
     }
 }
