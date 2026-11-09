@@ -87,6 +87,18 @@ fun ConnectedScreen() {
         refresh()
         tab = 0
     }
+    LaunchedEffect(Unit) {
+        if (safe.endpoint().isNotBlank() && safe.token().isNotBlank()) {
+            try {
+                withContext(Dispatchers.IO) { api().check() }
+                connected = true
+                refresh()
+            } catch (t: Exception) {
+                error = t.message ?: "Не удалось автоматически подключиться"
+            }
+        }
+    }
+
     LaunchedEffect(connected, session) {
         if (connected) {
             while (true) {
