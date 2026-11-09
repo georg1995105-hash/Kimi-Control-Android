@@ -10,8 +10,27 @@ android {
     applicationId = "pro.veor.kimicontrol"
     minSdk = 26
     targetSdk = 35
-    versionCode = 2
-    versionName = "0.2.0"
+    versionCode = 1000 + (System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 0)
+    versionName = "0.3.0"
+  }
+  val releaseKeystore = System.getenv("KIMI_KEYSTORE_PATH")
+  if (!releaseKeystore.isNullOrBlank()) {
+    signingConfigs {
+      create("stable") {
+        storeFile = file(releaseKeystore)
+        storePassword = System.getenv("KIMI_KEYSTORE_PASSWORD")
+        keyAlias = "kimi-control"
+        keyPassword = System.getenv("KIMI_KEY_PASSWORD")
+      }
+    }
+  }
+  buildTypes {
+    getByName("release") {
+      isMinifyEnabled = false
+      if (!releaseKeystore.isNullOrBlank()) {
+        signingConfig = signingConfigs.getByName("stable")
+      }
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
