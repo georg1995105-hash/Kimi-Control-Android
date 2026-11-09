@@ -101,14 +101,29 @@ class KimiApi(private val endpoint: String, private val token: String) {
     }
 
     fun pendingApprovals(sessionId: String): List<KimiApproval> {
-        val data = request("/api/v1/sessions/${segment(sessionId)}/snapshot")
-        val items = data.optJSONArray("pending_approvals") ?: JSONArray()
+        val data = request("/api/v1/sessions/${segment(sessionId)}/approvals?status=pending")
+        val items = data.optJSONArray("items") ?: JSONArray()
         return (0 until items.length()).mapNotNull { index ->
             val item = items.optJSONObject(index) ?: return@mapNotNull null
-            val id = item.optString("approval_id", item.optString("id"))
-            if (id.isBlank()) null else KimiApproval(id,
-                item.optString("tool_name", item.optString("description", "Разрешить действие агента?")))
+            val id = item.optString("approval_id")
+            if (id.isBlank()) null else KimiApproval(
+                id,
+                listOf(item.optString("tool_name"), item.optString("action"),
+                    item.optString("tool_input_display")).filter { it.isNotBlank() }.joinToString("\\n")
+            )
         }
+    }
+
+    fun runningPrompt(sessionId: String): KimiRunningPrompt? {
+        val data = request("/api/v1/sessions/${segment(sessionId)}/prompts")
+        val active = data.optJSONObject("active") ?: return null
+        val id = active.optString("prompt_id")
+        return if (id.isBlank()) null else KimiRunningPrompt(id, active.optString("status"))
+    }
+
+    fun abortPrompt(sessionId: String, promptId: String) {
+        request("/api/v1/sessions/${segment(sessionId)}/prompts/${segment(promptId)}:abort",
+            "POST", JSONObject())
     }
 
     fun resolveApproval(sessionId: String, approvalId: String, approved: Boolean) {
@@ -222,3 +237,5 @@ data class KimiUpload(val id: String, val name: String, val mime: String, val si
 class KimiApiException(message: String) : Exception(message)
 
 data class KimiApproval(val id: String, val description: String)
+
+data class KimiRunningPrompt(val id: String, val status: String)
