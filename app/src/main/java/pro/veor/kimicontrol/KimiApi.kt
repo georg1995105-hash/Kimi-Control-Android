@@ -126,6 +126,42 @@ class KimiApi(private val endpoint: String, private val token: String) {
             "POST", JSONObject())
     }
 
+    fun pendingQuestions(sessionId: String): List<KimiQuestion> {
+        val data = request("/api/v1/sessions/${segment(sessionId)}/questions?status=pending")
+        val items = data.optJSONArray("items") ?: JSONArray()
+        val result = mutableListOf<KimiQuestion>()
+        for (i in 0 until items.length()) {
+            val batch = items.optJSONObject(i) ?: continue
+            val batchId = batch.optString("question_id")
+            val questions = batch.optJSONArray("questions") ?: continue
+            for (j in 0 until questions.length()) {
+                val item = questions.optJSONObject(j) ?: continue
+                val questionId = item.optString("id")
+                val raw = item.optJSONArray("options") ?: JSONArray()
+                val options = (0 until raw.length()).mapNotNull { index ->
+                    raw.optJSONObject(index)?.let { option ->
+                        KimiQuestionOption(option.optString("id"), option.optString("label"))
+                    }
+                }.filter { it.id.isNotBlank() }
+                if (batchId.isNotBlank() && questionId.isNotBlank()) result.add(
+                    KimiQuestion(batchId, questionId, item.optString("question"),
+                        options, item.optBoolean("multi_select"), questions.length())
+                )
+            }
+        }
+        return result
+    }
+
+    fun answerSingleQuestion(sessionId: String, question: KimiQuestion, optionId: String) {
+        require(!question.multi && question.batchSize == 1) {
+            "Вопрос с несколькими ответами пока требует открытия Kimi Code в браузере"
+        }
+        val answer = JSONObject().put(question.itemId,
+            JSONObject().put("kind", "single").put("option_id", optionId))
+        request("/api/v1/sessions/${segment(sessionId)}/questions/${segment(question.batchId)}",
+            "POST", JSONObject().put("answers", answer).put("method", "click"))
+    }
+
     fun resolveApproval(sessionId: String, approvalId: String, approved: Boolean) {
         request("/api/v1/sessions/${segment(sessionId)}/approvals/${segment(approvalId)}",
             "POST", JSONObject().put("decision", if (approved) "approved" else "rejected"))
@@ -239,3 +275,9 @@ class KimiApiException(message: String) : Exception(message)
 data class KimiApproval(val id: String, val description: String)
 
 data class KimiRunningPrompt(val id: String, val status: String)
+
+data class KimiQuestionOption(val id: String, val label: String)
+data class KimiQuestion(
+    val batchId: String, val itemId: String, val prompt: String,
+    val options: List<KimiQuestionOption>, val multi: Boolean, val batchSize: Int
+)
