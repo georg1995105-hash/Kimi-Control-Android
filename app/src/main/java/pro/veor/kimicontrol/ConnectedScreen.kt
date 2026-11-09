@@ -363,6 +363,12 @@ fun ConnectedScreen() {
                                                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                                                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
                                                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+                                                putStringArrayListExtra(
+                                                    RecognizerIntent.EXTRA_BIASING_STRINGS,
+                                                    arrayListOf("Kimi Code", "GitHub", "CONTROL", "Python",
+                                                        "Gradle", "Kotlin", "Docker", "Android", "VPN",
+                                                        "сервер", "репозиторий", "коммит", "сборка APK")
+                                                )
                                                 putExtra(RecognizerIntent.EXTRA_PROMPT, "Говорите по-русски")
                                             })
                                         } catch (_: ActivityNotFoundException) {
