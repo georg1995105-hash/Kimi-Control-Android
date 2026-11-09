@@ -1,0 +1,106 @@
+name: Stable signed APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: kimi-stable-key
+  cancel-in-progress: false
+jobs:
+  signed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KIMI_SIGNING_PASSWORD: ${{ secrets.KIMI_SIGNING_PASSWORD }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Signing configured
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$KIMI_SIGNING_PASSWORD" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Add KIMI_SIGNING_PASSWORD to repository Actions secrets to enable stable updates"
+          else
+            if [ "$(printf %s "$KIMI_SIGNING_PASSWORD" | wc -c)" -lt 32 ]; then
+              echo "::error::Signing password must contain at least 32 characters"
+              exit 1
+            fi
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Gateway tests
+        if: steps.check.outputs.enabled == 'true'
+        run: python3 -m unittest discover -s gateway -p "test_*.py" -v
+      - uses: actions/setup-java@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK 35
+        if: steps.check.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Restore or create stable release key
+        if: steps.check.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          if [ ! -s signing/release-key.p12.enc.b64 ]; then
+            keytool -genkeypair -noprompt -keystore signing/release-key.p12 \
+              -storetype PKCS12 -alias kimi-control -keyalg RSA -keysize 3072 \
+              -validity 10000 -storepass "$KIMI_SIGNING_PASSWORD" \
+              -keypass "$KIMI_SIGNING_PASSWORD" \
+              -dname "CN=Kimi Control, OU=Android, O=Kimi Control"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 250000 -salt \
+              -in signing/release-key.p12 -out signing/release-key.p12.enc \
+              -pass env:KIMI_SIGNING_PASSWORD
+            base64 -w0 signing/release-key.p12.enc > signing/release-key.p12.enc.b64
+            printf '\n' >> signing/release-key.p12.enc.b64
+            rm -f signing/release-key.p12 signing/release-key.p12.enc
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add signing/release-key.p12.enc.b64
+            git commit -m "Save encrypted permanent signing key"
+            git push origin HEAD:main
+          fi
+          base64 -d signing/release-key.p12.enc.b64 |
+            openssl enc -aes-256-cbc -pbkdf2 -iter 250000 -d \
+              -pass env:KIMI_SIGNING_PASSWORD -out signing/release-key.p12
+          chmod 600 signing/release-key.p12
+      - name: Build signed APK
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          KIMI_KEYSTORE_PATH: ${{ github.workspace }}/signing/release-key.p12
+          KIMI_KEYSTORE_PASSWORD: ${{ secrets.KIMI_SIGNING_PASSWORD }}
+          KIMI_KEY_PASSWORD: ${{ secrets.KIMI_SIGNING_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify APK signature
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/release/app-release.apk
+      - name: Publish signed APK
+        if: steps.check.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kimi-Control-STABLE-SIGNED-APK
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove plaintext private signing key
+        if: always()
+        run: rm -f signing/release-key.p12
