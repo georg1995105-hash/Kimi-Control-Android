@@ -100,6 +100,22 @@ class KimiApi(private val endpoint: String, private val token: String) {
         }.reversed()
     }
 
+    fun pendingApprovals(sessionId: String): List<KimiApproval> {
+        val data = request("/api/v1/sessions/${segment(sessionId)}/snapshot")
+        val items = data.optJSONArray("pending_approvals") ?: JSONArray()
+        return (0 until items.length()).mapNotNull { index ->
+            val item = items.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("approval_id", item.optString("id"))
+            if (id.isBlank()) null else KimiApproval(id,
+                item.optString("tool_name", item.optString("description", "Разрешить действие агента?")))
+        }
+    }
+
+    fun resolveApproval(sessionId: String, approvalId: String, approved: Boolean) {
+        request("/api/v1/sessions/${segment(sessionId)}/approvals/${segment(approvalId)}",
+            "POST", JSONObject().put("decision", if (approved) "approved" else "rejected"))
+    }
+
     fun send(sessionId: String, message: String, uploaded: List<KimiUpload>): String {
         val parts = JSONArray()
         if (message.isNotBlank()) parts.put(JSONObject().put("type", "text").put("text", message))
@@ -200,3 +216,5 @@ data class KimiSession(val id: String, val title: String, val busy: Boolean, val
 data class KimiMessage(val id: String, val role: String, val text: String)
 data class KimiUpload(val id: String, val name: String, val mime: String, val size: Long)
 class KimiApiException(message: String) : Exception(message)
+
+data class KimiApproval(val id: String, val description: String)
