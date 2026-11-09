@@ -56,6 +56,7 @@ fun ConnectedScreen() {
     var sessions by remember { mutableStateOf(emptyList<KimiSession>()) }
     var history by remember { mutableStateOf(emptyList<KimiMessage>()) }
     var approvals by remember { mutableStateOf(emptyList<KimiApproval>()) }
+    var runningPrompt by remember { mutableStateOf<KimiRunningPrompt?>(null) }
     val files = remember { mutableStateListOf<Uri>() }
     var downloadPath by remember { mutableStateOf("") }
     var downloaded by remember { mutableStateOf<java.io.File?>(null) }
@@ -73,13 +74,19 @@ fun ConnectedScreen() {
     suspend fun refresh() {
         val result = withContext(Dispatchers.IO) {
             val client = api()
-            Triple(client.sessions(),
-                if (session.isNotBlank()) client.messages(session) else emptyList(),
-                if (session.isNotBlank()) client.pendingApprovals(session) else emptyList())
+            val currentSessions = client.sessions()
+            val currentMessages = if (session.isNotBlank()) client.messages(session) else emptyList()
+            val currentApprovals = if (session.isNotBlank()) client.pendingApprovals(session) else emptyList()
+            val active = if (session.isNotBlank()) client.runningPrompt(session) else null
+            listOf(currentSessions, currentMessages, currentApprovals, active)
         }
-        sessions = result.first
-        history = result.second
-        approvals = result.third
+        @Suppress("UNCHECKED_CAST")
+        sessions = result[0] as List<KimiSession>
+        @Suppress("UNCHECKED_CAST")
+        history = result[1] as List<KimiMessage>
+        @Suppress("UNCHECKED_CAST")
+        approvals = result[2] as List<KimiApproval>
+        runningPrompt = result[3] as? KimiRunningPrompt
     }
     fun connect() = runAction {
         withContext(Dispatchers.IO) { api().check() }
@@ -239,6 +246,33 @@ fun ConnectedScreen() {
                             }
                         }
                         HorizontalDivider(color = Color(0xFF293A41))
+                        if (runningPrompt != null) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(9.dp))
+                                Text(
+                                    "Kimi выполняет задачу",
+                                    modifier = Modifier.weight(1f),
+                                    color = Dim,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                TextButton(
+                                    enabled = !working,
+                                    onClick = {
+                                        val targetPrompt = runningPrompt?.id ?: return@TextButton
+                                        runAction {
+                                            withContext(Dispatchers.IO) {
+                                                api().abortPrompt(session, targetPrompt)
+                                            }
+                                            refresh()
+                                        }
+                                    }
+                                ) { Text("Остановить", color = Amber) }
+                            }
+                        }
                         LazyColumn(Modifier.weight(1f).fillMaxWidth(),
                             contentPadding = PaddingValues(12.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -487,6 +521,7 @@ fun ConnectedScreen() {
                                 sessions = emptyList()
                                 history = emptyList()
                                 approvals = emptyList()
+                                runningPrompt = null
                                 accessToken = ""
                                 error = ""
                             }) { Text("Удалить настройки подключения", color = Amber) }
